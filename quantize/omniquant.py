@@ -57,6 +57,43 @@ def omniquant(
         layers = model.model.layers
         model.model.embed_tokens = model.model.embed_tokens.to(dev)
         model.model.norm = model.model.norm.to(dev)
+        """
+        Use QuantLlamaDecoderLayer (present in models/int_llama_layer.py) instead of the float decoder layer in llama.
+        
+        Here if we notice, all the Linear and the MatMul layers are computed in the forward pass by using fake quant.
+        fake quant is defined in UniformAffineQuantizer class (in quantize/quantizer.py)
+        
+        Below is the pseudo-code for fake quant:
+        if self.group_size:
+            assert len(x.shape)==2, "only support linear layer now"
+            dim1, dim2 = x.shape
+            x = x.reshape(-1, self.group_size)
+        x_int = round_ste(x / scale)
+        x_int = x_int.add(round_zero_point)
+        x_int = x_int.clamp(self.qmin, self.qmax)
+        
+        x_dequant = x_int
+        x_dequant = x_dequant.sub(round_zero_point)
+        x_dequant = x_dequant.mul(scale)
+        if self.group_size:
+            x_dequant = x_dequant.reshape(dim1, dim2)
+        
+        The scales and zp are calculated for LWC using the per_token_dynamic_calibration() function. Pseudo-code as below
+        if self.group_size:
+            x = x.reshape(-1,self.group_size)
+           
+        reduce_shape = [-1]
+        xmin = x.amin(reduce_shape, keepdim=True)
+        xmax =  x.amax(reduce_shape, keepdim=True)
+        if self.lwc:
+            xmax = self.sigmoid(self.upbound_factor)*xmax
+            xmin = self.sigmoid(self.lowbound_factor)*xmin
+        self.round_zero_point = zero_point.clamp(min=-1e4, max=1e4).round()
+        
+        In the above pseudo-code, the upbound_factor and lowbound_factor are the learnable parameters. 
+        These parameters are initialised with all 4s and layer updated per epoch by using the AdamW optimiser.
+        
+        """
         DecoderLayer = QuantLlamaDecoderLayer
         pairs = {
             "q_proj":"qkv",
@@ -184,7 +221,38 @@ def omniquant(
     else:
         omni_parameters = {}
 
+    """
+    LET and LWC are applied here and the correspomding params are updated using the AdamW optimiser
     
+    1. Loop over all the layers and do the following for each layer
+        2. Assign qlayer = DecoderLayer(lm.model.config, layer, args)
+        3. we set weight_quant and activation_quant to False and run the full-precision model to get the outputs and we
+           store the ouputs in fp_inps[]. for j in fp_inps, each j represents the outputs for each sample.
+        4. Now we set the weight_quant to false and act_quant to true and run the qlayer model. 
+           For all the modules whose names are in the following keys {'q_proj': 'qkv', 'o_proj': 'out', 'up_proj': 'fc1'}, 
+           we capture the scales using the formula: scale = (act.pow(args.alpha)/weight.pow(1-args.alpha)).clamp(min=1e-5)
+           NOTE: activation scales are calculated in the pre run by running generate_act_scales_shifts.py.
+           
+           We register new keys in the model state dict and save them in "qkt_smooth_scale", ... so on with their respective names.
+        5. Now we loop over every epoch and make updates to the LET and LWC parameters
+            6. optimizer = torch.optim.AdamW(
+                    [
+                        {"params": params_let, "lr": args.let_lr},
+                        {"params": params_lwc, "lr": args.lwc_lr}
+                    ],
+                    weight_decay=args.wd
+                )
+                set the optimiser to AdamW which has two parameters, LET (ex: qkt_smooth_scale) and LWC (ex: lowbound_factor and upbound_factor)
+            7. smooth_and_quant_temporary() function adjusts the activation scales in corresponding weights such that the output/input activation 
+               need not be scaled
+            8. quant_out = qlayer(quant_inps...) forward pass to find the quant output here
+            9. find the loss between the original output and quant_out
+            10. loss_scaler??
+        11. smooth_and_quant_inplace(qlayer, args) here set the real weights by scaling down / up with calculates smooth scales in the epoch loop above after optminising
+        
+
+    
+    """
     
     for i in range(len(layers)):
         logger.info(f"=== Start quantize layer {i} ===")
