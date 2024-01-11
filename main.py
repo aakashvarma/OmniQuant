@@ -222,6 +222,7 @@ def main():
     parser.add_argument("--limit", type=int, default=-1)
     parser.add_argument("--multigpu", action="store_true", help="at eval, map model to multiple gpus")
     parser.add_argument("--deactive_amp", action="store_true", help="deactivate AMP when 8<=bits<16")
+    parser.add_argument("--capture_activation_scales", default=False, action="store_true", help="capture the scales of the activations in json")
     parser.add_argument(
         "--attn_implementation",
         type=str, required=False, default="eager",

@@ -13,6 +13,7 @@ import utils
 import os
 import pdb
 import gc
+import json
 from quantize.utils import let_parameters, lwc_parameters, get_omni_parameters,\
                             omni_state_dict, register_scales_and_zeros,smooth_and_quant_temporary,\
                             smooth_and_quant_inplace,clear_temp_variable,set_quant_state
@@ -185,7 +186,7 @@ def omniquant(
         omni_parameters = {}
 
     
-    
+    scales_shifts_json_data = {}
     for i in range(len(layers)):
         logger.info(f"=== Start quantize layer {i} ===")
         layer = layers[i].to(dev)
@@ -235,78 +236,94 @@ def omniquant(
                                 
         if args.resume:
             qlayer.load_state_dict(omni_parameters[i], strict=False)
-        
 
-        if args.epochs > 0:
-            with torch.no_grad():
-                qlayer.float()      # required for AMP training
-            # create optimizer
-            optimizer = torch.optim.AdamW(
-                [{"params":let_parameters(qlayer, use_shift),"lr":args.let_lr}, {"params":lwc_parameters(qlayer),"lr":args.lwc_lr}],weight_decay=args.wd)
-            loss_scaler = utils.NativeScalerWithGradNormCount()
-            
-            for epochs in range(args.epochs):
-                loss_list = []
-                norm_list = []
-                for j in range(args.nsamples//args.batch_size):    
-                    index = j * args.batch_size
-                    # obtain output of quantization model
-                    with traincast():
-                        smooth_and_quant_temporary(qlayer, args)
-                        quant_out = qlayer(quant_inps[index:index+args.batch_size,], attention_mask=attention_mask_batch,position_ids=position_ids)[0]
-                        loss = loss_func(fp_inps[index:index+args.batch_size,], quant_out)
-                        if args.aug_loss:
-                            loss += loss_func(fp_inps_2[index:index+args.batch_size,], quant_out)
-                    if not math.isfinite(loss.item()):
-                        logger.info("Loss is NAN, stopping training")
-                        pdb.set_trace()
-                        
-                    loss_list.append(loss.detach().cpu())
-                    optimizer.zero_grad()
-                    norm = loss_scaler(loss, optimizer,parameters= get_omni_parameters(qlayer, use_shift)).cpu()
-                    norm_list.append(norm.data)
-
-                loss_mean = torch.stack(loss_list).mean()
-                norm_mean = torch.stack(norm_list).mean()
-                logger.info(f"layer {i} iter {epochs} loss:{loss_mean} norm:{norm_mean} max memory_allocated {torch.cuda.max_memory_allocated(lm._device) / 1024**2} ")
-            clear_temp_variable(qlayer)
-            del optimizer
-        qlayer.half() 
-        # real smooth and quantization
-        smooth_and_quant_inplace(qlayer, args)
-        if args.epochs>0:
-            # update input of quantization model
-            with torch.no_grad():
-                with torch.cuda.amp.autocast():
-                    for j in range(args.nsamples):
-                        quant_inps[j] = qlayer(quant_inps[j].unsqueeze(0), attention_mask=attention_mask,position_ids=position_ids)[0]
-            register_scales_and_zeros(qlayer)
-            layers[i] = qlayer.to("cpu")
-            omni_parameters[i] = omni_state_dict(qlayer)
-            torch.save(omni_parameters, os.path.join(args.output_dir, f"omni_parameters.pth"))
+        values = []
+        if args.capture_activation_scales:
+            layer_id = i
+            values.append({"qkv_smooth_scale":  qlayer.qkv_smooth_scale.cpu().detach().numpy().tolist()})
+            values.append({"fc1_smooth_scale":  qlayer.fc1_smooth_scale.cpu().detach().numpy().tolist()})
+            values.append({"out_smooth_scale":  qlayer.out_smooth_scale.cpu().detach().numpy().tolist()})
+            values.append({"qkv_smooth_shift":  qlayer.qkv_smooth_shift.cpu().detach().numpy().tolist()})
+            values.append({"fc1_smooth_shift":  qlayer.fc1_smooth_shift.cpu().detach().numpy().tolist()})
+            values.append({"out_smooth_shift":  qlayer.out_smooth_shift.cpu().detach().numpy().tolist()})
+            scales_shifts_json_data[layer_id] = values
         else:
-            register_scales_and_zeros(qlayer)
-            layers[i] = qlayer.to("cpu")
-        if args.real_quant:
-            assert args.wbits in [2,3,4] and args.abits >= 16   # only support weight-only quantization
-            named_linears = get_named_linears(qlayer)
-            for name, module in named_linears.items():
-                scales = module.weight_quantizer.scales
-                zeros = module.weight_quantizer.zeros
-                group_size = module.weight_quantizer.group_size
-                dim0 = module.weight.shape[0]
-                scales = scales.view(dim0,-1)
-                zeros = zeros.view(dim0,-1)
-                if args.wbits == 3:
-                    q_linear = qlinear_cuda.QuantLinear(args.wbits, group_size, module.in_features,module.out_features,not module.bias is None)
-                else:
-                    q_linear = qlinear_triton.QuantLinear(args.wbits, group_size, module.in_features,module.out_features,not module.bias is None)
-                q_linear.pack(module.cpu(),  scales.float().cpu(), zeros.float().cpu())
-                add_new_module(name, qlayer, q_linear)       
-                print(f"pack quantized {name} finished")
-                del module        
+            if args.epochs > 0:
+                with torch.no_grad():
+                    qlayer.float()      # required for AMP training
+                # create optimizer
+                optimizer = torch.optim.AdamW(
+                    [{"params":let_parameters(qlayer, use_shift),"lr":args.let_lr}, {"params":lwc_parameters(qlayer),"lr":args.lwc_lr}],weight_decay=args.wd)
+                loss_scaler = utils.NativeScalerWithGradNormCount()
+                
+                for epochs in range(args.epochs):
+                    loss_list = []
+                    norm_list = []
+                    for j in range(args.nsamples//args.batch_size):    
+                        index = j * args.batch_size
+                        # obtain output of quantization model
+                        with traincast():
+                            smooth_and_quant_temporary(qlayer, args)
+                            quant_out = qlayer(quant_inps[index:index+args.batch_size,], attention_mask=attention_mask_batch,position_ids=position_ids)[0]
+                            loss = loss_func(fp_inps[index:index+args.batch_size,], quant_out)
+                            if args.aug_loss:
+                                loss += loss_func(fp_inps_2[index:index+args.batch_size,], quant_out)
+                        if not math.isfinite(loss.item()):
+                            logger.info("Loss is NAN, stopping training")
+                            pdb.set_trace()
+                            
+                        loss_list.append(loss.detach().cpu())
+                        optimizer.zero_grad()
+                        norm = loss_scaler(loss, optimizer,parameters= get_omni_parameters(qlayer, use_shift)).cpu()
+                        norm_list.append(norm.data)
+
+                    loss_mean = torch.stack(loss_list).mean()
+                    norm_mean = torch.stack(norm_list).mean()
+                    logger.info(f"layer {i} iter {epochs} loss:{loss_mean} norm:{norm_mean} max memory_allocated {torch.cuda.max_memory_allocated(lm._device) / 1024**2} ")
+                clear_temp_variable(qlayer)
+                del optimizer
+            qlayer.half() 
+            # real smooth and quantization
+            smooth_and_quant_inplace(qlayer, args)
+            if args.epochs>0:
+                # update input of quantization model
+                with torch.no_grad():
+                    with torch.cuda.amp.autocast():
+                        for j in range(args.nsamples):
+                            quant_inps[j] = qlayer(quant_inps[j].unsqueeze(0), attention_mask=attention_mask,position_ids=position_ids)[0]
+                register_scales_and_zeros(qlayer)
+                layers[i] = qlayer.to("cpu")
+                omni_parameters[i] = omni_state_dict(qlayer)
+                torch.save(omni_parameters, os.path.join(args.output_dir, f"omni_parameters.pth"))
+            else:
+                register_scales_and_zeros(qlayer)
+                layers[i] = qlayer.to("cpu")
+            if args.real_quant:
+                assert args.wbits in [2,3,4] and args.abits >= 16   # only support weight-only quantization
+                named_linears = get_named_linears(qlayer)
+                for name, module in named_linears.items():
+                    scales = module.weight_quantizer.scales
+                    zeros = module.weight_quantizer.zeros
+                    group_size = module.weight_quantizer.group_size
+                    dim0 = module.weight.shape[0]
+                    scales = scales.view(dim0,-1)
+                    zeros = zeros.view(dim0,-1)
+                    if args.wbits == 3:
+                        q_linear = qlinear_cuda.QuantLinear(args.wbits, group_size, module.in_features,module.out_features,not module.bias is None)
+                    else:
+                        q_linear = qlinear_triton.QuantLinear(args.wbits, group_size, module.in_features,module.out_features,not module.bias is None)
+                    q_linear.pack(module.cpu(),  scales.float().cpu(), zeros.float().cpu())
+                    add_new_module(name, qlayer, q_linear)       
+                    print(f"pack quantized {name} finished")
+                    del module
         del layer
         torch.cuda.empty_cache()
+
+    if args.capture_activation_scales:
+        json_filename = 'smooth_scales_and_shifts.json'
+        with open(json_filename, 'w') as json_file:
+            json.dump(scales_shifts_json_data, json_file, indent=4)
+        print(f"JSON data has been dumped to {json_filename}")  
 
     del inps
     del quant_inps
