@@ -46,9 +46,9 @@ def smooth_fc_fc_temporary(fc1, fc2, scales,shifts=None):
     fc1.use_temporary_parameter = True
     fc2.use_temporary_parameter = True
     if hasattr(fc1, 'temp_weight'):
-        fc1.temp_bias = fc1.temp_bias - shifts
-        fc1.temp_bias = fc1.temp_bias/scales.view(-1)
-        fc1.temp_weight = fc1.temp_weight/scales.view(-1,1)
+        fc1.temp_bias = fc1.temp_bias - shifts[:256]
+        fc1.temp_bias = fc1.temp_bias/scales[:256].view(-1)
+        fc1.temp_weight = fc1.temp_weight/scales[:256].view(-1,1)
     else:
         fc1.temp_bias = fc1.bias/scales.view(-1)
         fc1.temp_weight = fc1.weight/scales.view(-1,1)
@@ -65,8 +65,8 @@ def smooth_q_k_temporary(q_proj, k_proj, scales):
     k_proj.use_temporary_parameter = True
     q_proj.temp_weight = q_proj.temp_weight/scales.view(-1,1)
     q_proj.temp_bias = q_proj.temp_bias/scales.view(-1)
-    k_proj.temp_weight = k_proj.temp_weight*scales.view(-1,1)
-    k_proj.temp_bias = k_proj.temp_bias*scales.view(-1)
+    k_proj.temp_weight = k_proj.temp_weight*scales[:256].view(-1,1)
+    k_proj.temp_bias = k_proj.temp_bias*scales[:256].view(-1)
 
 def smooth_ln_fcs_inplace(ln, fcs, scales,shifts):
     ln.use_temporary_parameter = False
@@ -94,9 +94,9 @@ def smooth_fc_fc_inplace(fc1, fc2, scales,shifts=None):
     # only support for v_proj and out_proh now.
     fc1.use_temporary_parameter = False
     fc2.use_temporary_parameter = False
-    fc1.bias.sub_(shifts)
-    fc1.bias.div_(scales.view(-1))
-    fc1.weight.div_(scales.view(-1,1))
+    fc1.bias.sub_(shifts[:256])
+    fc1.bias.div_(scales[:256].view(-1))
+    fc1.weight.div_(scales[:256].view(-1,1))
     
     if hasattr(fc2, 'bias') and fc2.bias is not None:
         fc2.bias.add_(fc2.weight@shifts)
@@ -110,5 +110,5 @@ def smooth_q_k_inplace(q_proj, k_proj, scales,):
     k_proj.use_temporary_parameter = False
     q_proj.weight.div_(scales.view(-1,1))
     q_proj.bias.div_(scales.view(-1))
-    k_proj.weight.mul_(scales.view(-1,1))
-    k_proj.bias.mul_(scales.view(-1))
+    k_proj.weight.mul_(scales[:256].view(-1,1))
+    k_proj.bias.mul_(scales[:256].view(-1))
