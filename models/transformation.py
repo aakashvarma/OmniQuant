@@ -45,28 +45,38 @@ def smooth_fc_fc_temporary(fc1, fc2, scales,shifts=None):
     # only support for v_proj and out_proh now.
     fc1.use_temporary_parameter = True
     fc2.use_temporary_parameter = True
+
+    trimmed_shifts = shifts[:256]
+    complete_shifts = trimmed_shifts * (len(shifts) // len(trimmed_shifts))
+    trimmed_scales = scales[:256]
+    complete_scales = trimmed_scales * (len(scales) // len(trimmed_scales))
+
     if hasattr(fc1, 'temp_weight'):
-        fc1.temp_bias = fc1.temp_bias - shifts[:256]
-        fc1.temp_bias = fc1.temp_bias/scales[:256].view(-1)
-        fc1.temp_weight = fc1.temp_weight/scales[:256].view(-1,1)
+        fc1.temp_bias = fc1.temp_bias - trimmed_shifts
+        fc1.temp_bias = fc1.temp_bias/trimmed_scales.view(-1)
+        fc1.temp_weight = fc1.temp_weight/trimmed_scales.view(-1,1)
     else:
-        fc1.temp_bias = fc1.bias/scales.view(-1)
-        fc1.temp_weight = fc1.weight/scales.view(-1,1)
+        fc1.temp_bias = fc1.bias/trimmed_scales.view(-1)
+        fc1.temp_weight = fc1.weight/trimmed_scales.view(-1,1)
     
     if hasattr(fc2, 'bias') and fc2.bias is not None:
-        fc2.temp_bias = fc2.bias + fc2.weight@shifts
+        fc2.temp_bias = fc2.bias + fc2.weight@complete_shifts
     else:
-        fc2.temp_bias = fc2.weight@shifts
-    fc2.temp_weight = fc2.weight * scales.view(1,-1)
+        fc2.temp_bias = fc2.weight@complete_shifts
+    fc2.temp_weight = fc2.weight * complete_scales.view(1,-1)
 
 
 def smooth_q_k_temporary(q_proj, k_proj, scales):
     q_proj.use_temporary_parameter = True
     k_proj.use_temporary_parameter = True
-    q_proj.temp_weight = q_proj.temp_weight/scales.view(-1,1)
-    q_proj.temp_bias = q_proj.temp_bias/scales.view(-1)
-    k_proj.temp_weight = k_proj.temp_weight*scales[:256].view(-1,1)
-    k_proj.temp_bias = k_proj.temp_bias*scales[:256].view(-1)
+
+    trimmed_scales = scales[:256]
+    complete_scales = trimmed_scales * (len(scales) // len(trimmed_scales))
+
+    q_proj.temp_weight = q_proj.temp_weight/complete_scales.view(-1,1)
+    q_proj.temp_bias = q_proj.temp_bias/complete_scales.view(-1)
+    k_proj.temp_weight = k_proj.temp_weight*trimmed_scales.view(-1,1)
+    k_proj.temp_bias = k_proj.temp_bias*trimmed_scales.view(-1)
 
 def smooth_ln_fcs_inplace(ln, fcs, scales,shifts):
     ln.use_temporary_parameter = False
@@ -94,21 +104,31 @@ def smooth_fc_fc_inplace(fc1, fc2, scales,shifts=None):
     # only support for v_proj and out_proh now.
     fc1.use_temporary_parameter = False
     fc2.use_temporary_parameter = False
-    fc1.bias.sub_(shifts[:256])
-    fc1.bias.div_(scales[:256].view(-1))
-    fc1.weight.div_(scales[:256].view(-1,1))
+
+    trimmed_shifts = shifts[:256]
+    complete_shifts = trimmed_shifts * (len(shifts) // len(trimmed_shifts))
+    trimmed_scales = scales[:256]
+    complete_scales = trimmed_scales * (len(scales) // len(trimmed_scales))
+
+    fc1.bias.sub_(trimmed_shifts)
+    fc1.bias.div_(trimmed_scales.view(-1))
+    fc1.weight.div_(trimmed_scales.view(-1,1))
     
     if hasattr(fc2, 'bias') and fc2.bias is not None:
-        fc2.bias.add_(fc2.weight@shifts)
+        fc2.bias.add_(fc2.weight@complete_shifts)
     else:
         del fc2.bias
-        fc2.register_buffer('bias',fc2.weight@shifts)
-    fc2.weight.mul_(scales.view(1,-1))
+        fc2.register_buffer('bias',fc2.weight@complete_shifts)
+    fc2.weight.mul_(complete_scales.view(1,-1))
 
 def smooth_q_k_inplace(q_proj, k_proj, scales,):
     q_proj.use_temporary_parameter = False
     k_proj.use_temporary_parameter = False
-    q_proj.weight.div_(scales.view(-1,1))
-    q_proj.bias.div_(scales.view(-1))
-    k_proj.weight.mul_(scales[:256].view(-1,1))
-    k_proj.bias.mul_(scales[:256].view(-1))
+
+    trimmed_scales = scales[:256]
+    complete_scales = trimmed_scales * (len(scales) // len(trimmed_scales))
+
+    q_proj.weight.div_(complete_scales.view(-1,1))
+    q_proj.bias.div_(complete_scales.view(-1))
+    k_proj.weight.mul_(trimmed_scales.view(-1,1))
+    k_proj.bias.mul_(trimmed_scales.view(-1))
