@@ -1,6 +1,7 @@
 
 import torch
 import pdb
+import numpy as np
 
 class TruncateFunction(torch.autograd.Function):
     @staticmethod
@@ -46,9 +47,18 @@ def smooth_fc_fc_temporary(fc1, fc2, scales,shifts=None):
     fc1.use_temporary_parameter = True
     fc2.use_temporary_parameter = True
 
-    trimmed_shifts = shifts[:256]
+    assert len(scales) == len(shifts), "Lengths of scales and shifts must be equal"
+
+    chunk_size = 256
+    num_chunks = len(scales) // chunk_size
+
+    shifts_2d = np.array(shifts).reshape(num_chunks, chunk_size)
+    average_shifts = np.mean(shifts_2d, axis=0)
+    trimmed_shifts = average_shifts.tolist()
     complete_shifts = trimmed_shifts * (len(shifts) // len(trimmed_shifts))
-    trimmed_scales = scales[:256]
+    scales_2d = np.array(scales).reshape(num_chunks, chunk_size)
+    average_scales = np.mean(scales_2d, axis=0)
+    trimmed_scales = average_scales.tolist()
     complete_scales = trimmed_scales * (len(scales) // len(trimmed_scales))
 
     if hasattr(fc1, 'temp_weight'):
@@ -70,7 +80,12 @@ def smooth_q_k_temporary(q_proj, k_proj, scales):
     q_proj.use_temporary_parameter = True
     k_proj.use_temporary_parameter = True
 
-    trimmed_scales = scales[:256]
+    chunk_size = 256
+    num_chunks = len(scales) // chunk_size
+
+    scales_2d = np.array(scales).reshape(num_chunks, chunk_size)
+    average_scales = np.mean(scales_2d, axis=0)
+    trimmed_scales = average_scales.tolist()
     complete_scales = trimmed_scales * (len(scales) // len(trimmed_scales))
 
     q_proj.temp_weight = q_proj.temp_weight/complete_scales.view(-1,1)
@@ -105,9 +120,18 @@ def smooth_fc_fc_inplace(fc1, fc2, scales,shifts=None):
     fc1.use_temporary_parameter = False
     fc2.use_temporary_parameter = False
 
-    trimmed_shifts = shifts[:256]
+    assert len(scales) == len(shifts), "Lengths of scales and shifts must be equal"
+
+    chunk_size = 256
+    num_chunks = len(scales) // chunk_size
+
+    shifts_2d = np.array(shifts).reshape(num_chunks, chunk_size)
+    average_shifts = np.mean(shifts_2d, axis=0)
+    trimmed_shifts = average_shifts.tolist()
     complete_shifts = trimmed_shifts * (len(shifts) // len(trimmed_shifts))
-    trimmed_scales = scales[:256]
+    scales_2d = np.array(scales).reshape(num_chunks, chunk_size)
+    average_scales = np.mean(scales_2d, axis=0)
+    trimmed_scales = average_scales.tolist()
     complete_scales = trimmed_scales * (len(scales) // len(trimmed_scales))
 
     fc1.bias.sub_(trimmed_shifts)
@@ -125,7 +149,12 @@ def smooth_q_k_inplace(q_proj, k_proj, scales,):
     q_proj.use_temporary_parameter = False
     k_proj.use_temporary_parameter = False
 
-    trimmed_scales = scales[:256]
+    chunk_size = 256
+    num_chunks = len(scales) // chunk_size
+
+    scales_2d = np.array(scales).reshape(num_chunks, chunk_size)
+    average_scales = np.mean(scales_2d, axis=0)
+    trimmed_scales = average_scales.tolist()
     complete_scales = trimmed_scales * (len(scales) // len(trimmed_scales))
 
     q_proj.weight.div_(complete_scales.view(-1,1))
