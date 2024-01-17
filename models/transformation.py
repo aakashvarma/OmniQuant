@@ -53,11 +53,11 @@ def smooth_fc_fc_temporary(fc1, fc2, scales,shifts=None):
     num_chunks = len(scales) // chunk_size
 
     shifts_2d = np.array(shifts).reshape(num_chunks, chunk_size)
-    average_shifts = np.mean(shifts_2d, axis=0)
+    average_shifts = np.max(shifts_2d, axis=0)
     trimmed_shifts = average_shifts.tolist()
     complete_shifts = trimmed_shifts * (len(shifts) // len(trimmed_shifts))
     scales_2d = np.array(scales).reshape(num_chunks, chunk_size)
-    average_scales = np.mean(scales_2d, axis=0)
+    average_scales = np.max(scales_2d, axis=0)
     trimmed_scales = average_scales.tolist()
     complete_scales = trimmed_scales * (len(scales) // len(trimmed_scales))
 
@@ -84,7 +84,7 @@ def smooth_q_k_temporary(q_proj, k_proj, scales):
     num_chunks = len(scales) // chunk_size
 
     scales_2d = np.array(scales).reshape(num_chunks, chunk_size)
-    average_scales = np.mean(scales_2d, axis=0)
+    average_scales = np.max(scales_2d, axis=0)
     trimmed_scales = average_scales.tolist()
     complete_scales = trimmed_scales * (len(scales) // len(trimmed_scales))
 
@@ -126,11 +126,11 @@ def smooth_fc_fc_inplace(fc1, fc2, scales,shifts=None):
     num_chunks = len(scales) // chunk_size
 
     shifts_2d = np.array(shifts).reshape(num_chunks, chunk_size)
-    average_shifts = np.mean(shifts_2d, axis=0)
+    average_shifts = np.max(shifts_2d, axis=0)
     trimmed_shifts = average_shifts.tolist()
     complete_shifts = trimmed_shifts * (len(shifts) // len(trimmed_shifts))
     scales_2d = np.array(scales).reshape(num_chunks, chunk_size)
-    average_scales = np.mean(scales_2d, axis=0)
+    average_scales = np.max(scales_2d, axis=0)
     trimmed_scales = average_scales.tolist()
     complete_scales = trimmed_scales * (len(scales) // len(trimmed_scales))
 
@@ -153,7 +153,7 @@ def smooth_q_k_inplace(q_proj, k_proj, scales,):
     num_chunks = len(scales) // chunk_size
 
     scales_2d = np.array(scales).reshape(num_chunks, chunk_size)
-    average_scales = np.mean(scales_2d, axis=0)
+    average_scales = np.max(scales_2d, axis=0)
     trimmed_scales = average_scales.tolist()
     complete_scales = trimmed_scales * (len(scales) // len(trimmed_scales))
 
