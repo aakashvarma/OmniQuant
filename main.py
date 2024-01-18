@@ -350,6 +350,7 @@ def main():
             logger,
         )
         logger.info(time.time() - tick)
+    evaluate(lm, args, logger)
     if args.save_dir:
         # delete omni parameters
         for name, module in lm.model.named_modules():
@@ -366,7 +367,7 @@ def main():
                     del module.fc1_smooth_shift           
         lm.model.save_pretrained(args.save_dir)  
         lm.tokenizer.save_pretrained(args.save_dir) 
-    evaluate(lm, args,logger)
+
 
 
 if __name__ == "__main__":
