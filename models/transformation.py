@@ -47,9 +47,9 @@ def smooth_fc_fc_temporary(fc1, fc2, scales,shifts=None):
     fc2.use_temporary_parameter = True
 
     trimmed_shifts = shifts[:256]
-    complete_shifts = trimmed_shifts * (len(shifts) // len(trimmed_shifts))
+    complete_shifts = trimmed_shifts.repeat(len(shifts) // len(trimmed_shifts))
     trimmed_scales = scales[:256]
-    complete_scales = trimmed_scales * (len(scales) // len(trimmed_scales))
+    complete_scales = trimmed_scales.repeat(len(scales) // len(trimmed_scales))
 
     if hasattr(fc1, 'temp_weight'):
         fc1.temp_bias = fc1.temp_bias - trimmed_shifts
@@ -71,7 +71,7 @@ def smooth_q_k_temporary(q_proj, k_proj, scales):
     k_proj.use_temporary_parameter = True
 
     trimmed_scales = scales[:256]
-    complete_scales = trimmed_scales * (len(scales) // len(trimmed_scales))
+    complete_scales = trimmed_scales.repeat(len(scales) // len(trimmed_scales))
 
     q_proj.temp_weight = q_proj.temp_weight/complete_scales.view(-1,1)
     q_proj.temp_bias = q_proj.temp_bias/complete_scales.view(-1)
@@ -106,9 +106,9 @@ def smooth_fc_fc_inplace(fc1, fc2, scales,shifts=None):
     fc2.use_temporary_parameter = False
 
     trimmed_shifts = shifts[:256]
-    complete_shifts = trimmed_shifts * (len(shifts) // len(trimmed_shifts))
+    complete_shifts = trimmed_shifts.repeat(len(shifts) // len(trimmed_shifts))
     trimmed_scales = scales[:256]
-    complete_scales = trimmed_scales * (len(scales) // len(trimmed_scales))
+    complete_scales = trimmed_scales.repeat(len(scales) // len(trimmed_scales))
 
     fc1.bias.sub_(trimmed_shifts)
     fc1.bias.div_(trimmed_scales.view(-1))
@@ -126,7 +126,7 @@ def smooth_q_k_inplace(q_proj, k_proj, scales,):
     k_proj.use_temporary_parameter = False
 
     trimmed_scales = scales[:256]
-    complete_scales = trimmed_scales * (len(scales) // len(trimmed_scales))
+    complete_scales = trimmed_scales.repeat(len(scales) // len(trimmed_scales))
 
     q_proj.weight.div_(complete_scales.view(-1,1))
     q_proj.bias.div_(complete_scales.view(-1))
