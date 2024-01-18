@@ -53,11 +53,11 @@ def smooth_fc_fc_temporary(fc1, fc2, scales,shifts=None):
     num_chunks = len(scales) // chunk_size
 
     shifts_2d = shifts.view(num_chunks, chunk_size)
-    trimmed_shifts = torch.max(shifts_2d, dim=0)
+    trimmed_shifts = torch.max(shifts_2d, dim=0).values
     complete_shifts = trimmed_shifts.repeat(len(shifts) // len(trimmed_shifts))
 
     scales_2d = scales.view(num_chunks, chunk_size)
-    trimmed_scales = torch.max(scales_2d, dim=0)
+    trimmed_scales = torch.max(scales_2d, dim=0).values
     complete_scales = trimmed_scales.repeat(len(scales) // len(trimmed_scales))
 
     if hasattr(fc1, 'temp_weight'):
@@ -83,7 +83,7 @@ def smooth_q_k_temporary(q_proj, k_proj, scales):
     num_chunks = len(scales) // chunk_size
 
     scales_2d = scales.view(num_chunks, chunk_size)
-    trimmed_scales = torch.max(scales_2d, dim=0)
+    trimmed_scales = torch.max(scales_2d, dim=0).values
     complete_scales = trimmed_scales.repeat(len(scales) // len(trimmed_scales))
 
     q_proj.temp_weight = q_proj.temp_weight/complete_scales.view(-1,1)
@@ -124,11 +124,11 @@ def smooth_fc_fc_inplace(fc1, fc2, scales,shifts=None):
     num_chunks = len(scales) // chunk_size
 
     shifts_2d = shifts.view(num_chunks, chunk_size)
-    trimmed_shifts = torch.max(shifts_2d, dim=0)
+    trimmed_shifts = torch.max(shifts_2d, dim=0).values
     complete_shifts = trimmed_shifts.repeat(len(shifts) // len(trimmed_shifts))
 
     scales_2d = scales.view(num_chunks, chunk_size)
-    trimmed_scales = torch.max(scales_2d, dim=0)
+    trimmed_scales = torch.max(scales_2d, dim=0).values
     complete_scales = trimmed_scales.repeat(len(scales) // len(trimmed_scales))
 
     fc1.bias.sub_(trimmed_shifts)
@@ -150,7 +150,7 @@ def smooth_q_k_inplace(q_proj, k_proj, scales,):
     num_chunks = len(scales) // chunk_size
 
     scales_2d = scales.view(num_chunks, chunk_size)
-    trimmed_scales = torch.max(scales_2d, dim=0)
+    trimmed_scales = torch.max(scales_2d, dim=0).values
     complete_scales = trimmed_scales.repeat(len(scales) // len(trimmed_scales))
 
     q_proj.weight.div_(complete_scales.view(-1,1))
