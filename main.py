@@ -93,7 +93,8 @@ def evaluate(lm, args, logger):
 
     if args.eval_ppl:
         # for dataset in ["wikitext2", "ptb", "c4","ptb-new",'c4-new']:
-        for dataset in ["wikitext2", "ptb", "c4"]:
+        # for dataset in ["wikitext2", "ptb", "c4"]:
+        for dataset in ["wikitext2", "ptb"]:
             cache_testloader = f'{args.cache_dir}/testloader_{args.model_family}_{dataset}_all.cache'
             if os.path.exists(cache_testloader):
                 testloader = torch.load(cache_testloader)
@@ -350,6 +351,7 @@ def main():
             logger,
         )
         logger.info(time.time() - tick)
+    evaluate(lm, args, logger)
     if args.save_dir:
         # delete omni parameters
         for name, module in lm.model.named_modules():
@@ -365,8 +367,7 @@ def main():
                     del module.fc1_smooth_scale
                     del module.fc1_smooth_shift           
         lm.model.save_pretrained(args.save_dir)  
-        lm.tokenizer.save_pretrained(args.save_dir) 
-    evaluate(lm, args,logger)
+        lm.tokenizer.save_pretrained(args.save_dir)
 
 
 if __name__ == "__main__":
