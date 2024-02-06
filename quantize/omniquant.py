@@ -98,7 +98,8 @@ def omniquant(
         pairs = {
             "q_proj":"qkv",
             "o_proj":"out",
-            "up_proj":"fc1"
+            "up_proj":"fc1",
+            "down_proj":"down"
         }
         layer_name_prefix = "model.layers"
     elif "opt" in args.net.lower():

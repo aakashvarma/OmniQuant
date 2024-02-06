@@ -73,6 +73,8 @@ def smooth_and_quant_temporary(model, args):
                             model.out_smooth_scale, model.out_smooth_shift)
         smooth_q_k_temporary(model.self_attn.q_proj, model.self_attn.k_proj,
                             model.qkt_smooth_scale)
+        smooth_fc_fc_temporary(model.mlp.up_proj,model.mlp.down_proj,
+                               model.down_smooth_scale, model.down_smooth_shift)
         model.mlp.down_proj.temp_weight = model.mlp.down_proj.weight
     else:
         for name, module in model.named_modules():
@@ -111,6 +113,8 @@ def smooth_and_quant_inplace(model, args):
                             model.out_smooth_scale, model.out_smooth_shift)
         smooth_q_k_inplace(model.self_attn.q_proj, model.self_attn.k_proj,
                             model.qkt_smooth_scale)
+        smooth_fc_fc_inplace(model.mlp.up_proj, model.mlp.down_proj,
+                             model.down_smooth_scale, model.down_smooth_shift)
     for name, module in model.named_modules():
         if isinstance(module, QuantLinear):
             module.weight = module.weight_quantizer(module.weight)
